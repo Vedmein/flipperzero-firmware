@@ -343,21 +343,20 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 ///Draw GameOver
     if(game_state->game_status == StatusGameOver) {
          FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        canvas_draw_icon_animation(canvas, 4,0, game_state->game_over_animation);
+        canvas_draw_icon_animation(canvas, 0,0, game_state->game_over_animation);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
     ///Pause
     if(game_state->game_status == StatusPauseGame) {
         FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        canvas_draw_icon_animation(canvas, 4,0, game_state->pause_animation);
-        canvas_draw_icon(canvas, 4, 0, &I_Game_over_128x64);
+        canvas_draw_icon_animation(canvas, 0,0, game_state->pause_animation);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
 
     ///Draw field
-    canvas_clear(canvas);
+    canvas_draw_icon(canvas, 0,0, &I_Background_128x64);
     canvas_set_color(canvas, ColorBlack);
     for(int y = 0; y < Y_FIELD_SIZE; ++y) {
         for(int x = 0; x < X_FIELD_SIZE; ++x) {
