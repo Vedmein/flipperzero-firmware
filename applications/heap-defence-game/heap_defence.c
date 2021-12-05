@@ -343,7 +343,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 ///Draw GameOver
     if(game_state->game_status == StatusGameOver) {
          FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        canvas_draw_icon_animation(canvas, 0,0, game_state->game_over_animation);
+        canvas_draw_icon_animation(canvas, 0,0, git);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
