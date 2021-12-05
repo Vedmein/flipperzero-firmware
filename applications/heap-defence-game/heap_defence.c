@@ -66,6 +66,8 @@ typedef struct {
 typedef struct {
     Box** field;
     Person* person;
+    IconAnimation * pause_animation;
+    IconAnimation* game_over_animation;
     GameStatuses game_status;
 } GameState;
 
@@ -91,6 +93,8 @@ GameState* allocGameState() {
     game_state->person->p.x = 5;
     game_state->person->p.y = Y_LAST;
     game_state->game_status = StatusGameInProgr;
+    game_state->pause_animation = icon_animation_alloc(&A_HD_start_128x64); //TODO:dealloc
+    game_state->game_over_animation = icon_animation_alloc(&A_HD_game_over_128x64); //TODO:dealloc
     return game_state;
 }
 
@@ -339,43 +343,16 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 ///Draw GameOver
     if(game_state->game_status == StatusGameOver) {
          FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        // Screen is 128x64 px
-        /*
-        canvas_set_color(canvas, ColorWhite);
-        canvas_draw_box(canvas, 34, 20, 62, 24);
-
-        canvas_set_color(canvas, ColorBlack);
-        canvas_draw_frame(canvas, 34, 20, 62, 24);
-
-        canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 37, 31, "Game Over");
-
-        canvas_set_font(canvas, FontSecondary); */
-        canvas_draw_icon(canvas, 0, 0, &I_Game_over_128x64);
-        char buffer[12];
-//        snprintf(buffer, sizeof(buffer), "Score: %u", snake_state->len - 7);
-        canvas_draw_str_aligned(canvas, 64, 41, AlignCenter, AlignBottom, buffer);
+        canvas_draw_icon_animation(canvas, 0,0, game_state->game_over_animation);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
     ///Pause
     if(game_state->game_status == StatusPauseGame) {
         FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        // Screen is 128x64 px
-        /* canvas_set_color(canvas, ColorWhite);
-        canvas_draw_box(canvas, 34, 20, 62, 24);
+        canvas_draw_icon_animation(canvas, 0,0, game_state->pause_animation);
 
-        canvas_set_color(canvas, ColorBlack);
-        canvas_draw_frame(canvas, 34, 20, 62, 24);
-
-        canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 37, 31, "Pause Game");
-
-        canvas_set_font(canvas, FontSecondary);*/
-        canvas_draw_icon(canvas, 0, 0, &I_Start_128x64);
-        char buffer[12];
-        //        snprintf(buffer, sizeof(buffer), "Score: %u", snake_state->len - 7);
-        canvas_draw_str_aligned(canvas, 64, 41, AlignCenter, AlignBottom, buffer);
+        canvas_draw_icon(canvas, 0, 0, &I_Game_over_128x64);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
@@ -439,6 +416,8 @@ int32_t heap_defence_app(void* p) {
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
     GameEvent event = {.type = 0, .input = {0}};
+    icon_animation_start(game->pause_animation);
+    icon_animation_start(game->game_over_animation);
     while(event.input.key != InputKeyBack) { /// ATTENTION
         if(osMessageQueueGet(event_queue, &event, NULL, 100) != osOK) {
             continue;
