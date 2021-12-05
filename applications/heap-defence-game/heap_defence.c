@@ -297,7 +297,7 @@ static void draw_box(Canvas* canvas, Box* box, int x, int y) {
     byte y_screen = y * BOX_WIDTH - box->offset;
     byte x_screen = x * BOX_HEIGHT;
 
-    canvas_draw_frame(canvas, x_screen, y_screen, BOX_WIDTH, BOX_HEIGHT);
+    canvas_draw_icon(canvas, 0, 0, &I_Box1_10x10);
 }
 
 static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
