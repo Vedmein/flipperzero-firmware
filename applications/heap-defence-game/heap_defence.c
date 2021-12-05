@@ -27,7 +27,14 @@ static int tick_count = 0;
 #define PERSON_HEIGHT (BOX_HEIGHT * 2) // TODO Каждый раз будет заново считать
 #define PERSON_WIDTH BOX_WIDTH
 
+const Icon *boxes[] = {&I_Box1_10x10,
+                &I_Box2_10x10,
+                &I_Box3_10x10,
+                &I_Box4_10x10,
+                &I_Box5_10x10};
+
 typedef u_int8_t byte;
+
 
 typedef enum {
     StatusGameInProgr,
@@ -53,6 +60,7 @@ typedef struct {
     byte state;
     byte shift;
     byte offset;
+    byte box_id;
 } Box;
 
 typedef struct {
@@ -120,6 +128,7 @@ static void generate_box(GameState const* game_state) {
     int x_offset = rand() % X_FIELD_SIZE;
     game_state->field[0][x_offset].state = 1;
     game_state->field[0][x_offset].offset = BOX_HEIGHT;
+    game_state->field[0][x_offset].box_id = rand() % 5;
 }
 
 static void heap_swap(Box* first, Box* second) {
@@ -320,7 +329,7 @@ static void draw_box(Canvas* canvas, Box* box, int x, int y) {
     byte y_screen = y * BOX_WIDTH - box->offset;
     byte x_screen = x * BOX_HEIGHT;
 
-    canvas_draw_icon(canvas, x_screen, y_screen, &I_Box1_10x10); //ved рисуем бокс
+    canvas_draw_icon(canvas, x_screen, y_screen, boxes[box->box_id]); //ved рисуем бокс
 }
 
 static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
