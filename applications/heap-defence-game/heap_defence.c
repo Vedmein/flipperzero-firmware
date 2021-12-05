@@ -53,6 +53,7 @@ typedef struct {
     Position p;
     int j_tick;
     int h_tick;
+    bool right_frame;
 } Person;
 
 typedef struct {
@@ -66,8 +67,10 @@ typedef struct {
 typedef struct {
     Box** field;
     Person* person;
-    IconAnimation * pause_animation;
+    IconAnimation* pause_animation;
     IconAnimation* game_over_animation;
+    IconAnimation* left_person_an;
+    IconAnimation* right_person_an;
     GameStatuses game_status;
 } GameState;
 
@@ -95,6 +98,8 @@ GameState* allocGameState() {
     game_state->game_status = StatusGameInProgr;
     game_state->pause_animation = icon_animation_alloc(&A_HD_start_128x64); //TODO:dealloc
     game_state->game_over_animation = icon_animation_alloc(&A_HD_game_over_128x64); //TODO:dealloc
+    game_state->left_person_an = icon_animation_alloc(&A_HD_person_left_10x20); //TODO:dealloc
+    game_state->right_person_an = icon_animation_alloc(&A_HD_person_right_10x20); //TODO:dealloc
     return game_state;
 }
 
@@ -192,12 +197,14 @@ static void person_set_events(Person* person, InputEvent* input) {
             person->j_tick = 1;
         break;
     case InputKeyLeft:
+        person->right_frame = false;
         if(person->h_tick == 0) {
             person->h_tick = 1;
             person->x_direction = -1;
         }
         break;
     case InputKeyRight:
+        person->right_frame = true;
         if(person->h_tick == 0) {
             person->h_tick = 1;
             person->x_direction = 1;
@@ -365,11 +372,22 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     }
 
     ///Draw Person
-    canvas_draw_icon(
-        canvas,
-        game_state->person->p.x * BOX_WIDTH,
-        (game_state->person->p.y - 1) * BOX_HEIGHT,
-        &I_Person1_10x20);
+//    canvas_draw_icon(
+//        canvas,
+//        game_state->person->p.x * BOX_WIDTH,
+//        (game_state->person->p.y - 1) * BOX_HEIGHT,
+//        &I_Person1_10x20);
+//
+
+    IconAnimation *animation = game_state->person->right_frame ?
+                               game_state->right_person_an:
+                               game_state->left_person_an ;
+
+    canvas_draw_icon_animation(canvas,
+                               game_state->person->p.x * BOX_WIDTH + 4,
+                               (game_state->person->p.y - 1) * BOX_HEIGHT,
+    animation); //TODO left/right
+
     release_mutex((ValueMutex*)mutex, game_state);
 }
 
@@ -415,8 +433,11 @@ int32_t heap_defence_app(void* p) {
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
     GameEvent event = {.type = 0, .input = {0}};
+    ///Animation init!
     icon_animation_start(game->pause_animation);
     icon_animation_start(game->game_over_animation);
+    icon_animation_start(game->left_person_an);
+    icon_animation_start(game->right_person_an);
     while(event.input.key != InputKeyBack) { /// ATTENTION
         if(osMessageQueueGet(event_queue, &event, NULL, 100) != osOK) {
             continue;
