@@ -4,16 +4,11 @@
 
 #include <stdlib.h>
 #include <string.h>
-//#include <stdlib.h>
 
-#include "../flipperzero-firmware/core/furi.h"
-#include "../flipperzero-firmware/applications/gui/gui.h"
-#include "../flipperzero-firmware/applications/input/input.h"
-#include "../flipperzero-firmware/lib/STM32CubeWB/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h"
-#include "../flipperzero-firmware/applications/input/input.h"
-#include "../flipperzero-firmware/firmware/targets/f7/furi-hal/furi-hal-resources.h"
-#include <stdlib.h>
-#include <string.h>
+#include <furi.h>
+#include <gui/gui.h>
+#include <input/input.h>
+#include <furi-hal-resources.h>
 
 #define Y_FIELD_SIZE 6
 #define Y_LAST (Y_FIELD_SIZE - 1)
