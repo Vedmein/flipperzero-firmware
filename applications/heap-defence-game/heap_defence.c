@@ -331,7 +331,7 @@ static void draw_box(Canvas* canvas, Box* box, int x, int y) {
         return;
     }
     byte y_screen = y * BOX_WIDTH - box->offset;
-    byte x_screen = x * BOX_HEIGHT;
+    byte x_screen = x * BOX_HEIGHT + 4;
 
     canvas_draw_icon(canvas, x_screen, y_screen, boxes[box->box_id]); //ved рисуем бокс
 }
@@ -343,16 +343,16 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 ///Draw GameOver
     if(game_state->game_status == StatusGameOver) {
          FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        canvas_draw_icon_animation(canvas, 0,0, game_state->game_over_animation);
+        canvas_draw_icon_animation(canvas, 4,0, game_state->game_over_animation);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
     ///Pause
     if(game_state->game_status == StatusPauseGame) {
         FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        canvas_draw_icon_animation(canvas, 0,0, game_state->pause_animation);
+        canvas_draw_icon_animation(canvas, 4,0, game_state->pause_animation);
 
-        canvas_draw_icon(canvas, 0, 0, &I_Game_over_128x64);
+        canvas_draw_icon(canvas, 4, 0, &I_Game_over_128x64);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
