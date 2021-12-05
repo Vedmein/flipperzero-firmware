@@ -351,8 +351,6 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     if(game_state->game_status == StatusPauseGame) {
         FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
         canvas_draw_icon_animation(canvas, 0,0, game_state->pause_animation);
-
-        canvas_draw_icon(canvas, 0, 0, &I_Game_over_128x64);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
     }
@@ -365,7 +363,8 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
             draw_box(canvas, &(game_state->field[y][x]), x, y);
         }
     }
-///Draw Person
+
+    ///Draw Person
     canvas_draw_icon(
         canvas,
         game_state->person->p.x * BOX_WIDTH,
