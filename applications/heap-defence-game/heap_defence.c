@@ -24,35 +24,21 @@
 
 #define BOX_HEIGHT 10
 #define BOX_WIDTH 10
-#define TIMER_UPDATE_FREQ 6
-#define BOX_DROP_RATE 5
-#define BOX_GENERATION_RATE 70
+#define TIMER_UPDATE_FREQ 8
+#define BOX_GENERATION_RATE 30
 
 static int tick_count = 0;
 
 #define PERSON_HEIGHT (BOX_HEIGHT * 2) // TODO Каждый раз будет заново считать
 #define PERSON_WIDTH BOX_WIDTH
-#define PERSON_STEP_PIX 1
-#define PERSON_RIGHT (person->screen_x + PERSON_WIDTH)
-#define PERSON_LEFT (person->screen_x)
-#define PERSON_BOTTOM (person->screen_y - PERSON_HEIGHT)
-#define PERSON_TOP (person->screen_y)
 
 typedef u_int8_t byte;
 
 typedef enum {
-    StatusWaitingForStart,
-    StatusGameInProgress,
+    StatusGameInProgr,
     StatusGameOver,
-    StatusGameExit
+    StatusPauseGame
 } GameStatuses;
-
-typedef enum {
-    PersonStatusDead,
-    PersonStatusWalk,
-    PersonStatusJump,
-    PersonStatusPush
-} PersonStatuses;
 
 typedef struct {
     int x;
@@ -61,10 +47,10 @@ typedef struct {
 
 typedef struct {
     int x_direction;
-    byte do_jump;
     byte is_walking;
     Position p;
-    PersonStatuses status;
+    int j_tick;
+    int h_tick;
 } Person;
 
 typedef struct {
@@ -78,7 +64,6 @@ typedef struct {
     Box** field;
     Person* person;
     GameStatuses game_status;
-//    byte tick_count;
 } GameState;
 
 typedef Box** Field;
@@ -102,7 +87,7 @@ GameState* allocGameState() {
     }
     game_state->person->p.x = 5;
     game_state->person->p.y = Y_LAST;
-    game_state->game_status = StatusWaitingForStart;
+    game_state->game_status = StatusGameInProgr;
     return game_state;
 }
 
@@ -149,6 +134,7 @@ static void heap_swap(Box* first, Box* second) {
     *first = *second;
     *second = temp;
 }
+
 void dec_offset(byte* p_offset) {
     if(*p_offset) (*p_offset)--;
 }
@@ -192,26 +178,38 @@ static void clear_rows(Box** field) {
  */
 
 static void person_set_events(Person* person, InputEvent* input) {
-    //    if (person->status == PersonStatusJump || person->status == PersonStatusPush) {
-    //        return;
-    //    }
     switch(input->key) {
     case InputKeyUp:
-        //TODO: может лучше будет выставлять когда персонаж не идет
-        person->do_jump = 1;
+        if(!person->j_tick)
+            person->j_tick = 1;
         break;
     case InputKeyLeft:
-//        FURI_LOG_W(TAG, "func: INPUT_EVENT_LEFT");
-        if(!person->x_direction) {
+        if(person->h_tick == 0) {
+            person->h_tick = 1;
             person->x_direction = -1;
         }
         break;
     case InputKeyRight:
-        if(!person->x_direction) person->x_direction = 1;
+        if(person->h_tick == 0) {
+            person->h_tick = 1;
+            person->x_direction = 1;
+        }
         break;
     default:
         break;
     }
+}
+
+static inline bool is_box(Box box) {
+    return box.state != 0;
+}
+
+
+static bool ground_box_check(Box* const* field, Position* new_position) {
+    bool ground_box_droped = ((*new_position).y == Y_LAST || //Eсли мы и так в самом низу
+                              !is_box(field[(*new_position).y + 1][(*new_position).x]) || // Ecли снизу пустота
+                              field[(*new_position).y + 1][(*new_position).x].offset == 0); //Eсли бокс снизу допадал
+    return ground_box_droped;
 }
 
 static bool is_moveble(Position box_pos, int x_direction, Field field) {
@@ -232,67 +230,81 @@ static bool is_moveble(Position box_pos, int x_direction, Field field) {
     return true;
 }
 
-static void horizontal_move(Person* person, Field field) {
+static bool horizontal_move(Person* person, Field field) {
     Position new_position = person->p;
 
-    //TODO:Check ground?
-    if(!person->x_direction) return;
-
-//    FURI_LOG_W(TAG, "func: %s line: %d direction: %d", __FUNCTION__, __LINE__, person->x_direction);
+    if(!person->x_direction) return false;
 
     new_position.x += person->x_direction;
 
     bool on_edge_position = new_position.x < 0 || new_position.x > X_LAST;
-    if(on_edge_position) return;
+    if(on_edge_position) return false;
 
-
-//    FURI_LOG_W(
-//        TAG, "pre_move: func: %s line: %d x:%d y:%d", __FUNCTION__, __LINE__, person->p.x, person->p.y);
-
-    if(field[new_position.y][new_position.x].state == 0) {
-        person->p = new_position;
+    if(!is_box(field[new_position.y][new_position.x])){
+        bool ground_box_droped = ground_box_check(field, &new_position);
+        if(ground_box_droped) {
+            person->p = new_position;
+            return true;
+        }
     } else if(is_moveble(new_position, person->x_direction, field)) {
-        //TODO:animation
-
-//        FURI_LOG_W(TAG, "move:func: %s line: %d x:%d y:%d",
-//                   __FUNCTION__, __LINE__, person->p.x, person->p.y);
         field[new_position.y][new_position.x + person->x_direction] =
             field[new_position.y][new_position.x];
 
         field[new_position.y][new_position.x].state = 0;
         person->p = new_position;
+        return true;
     }
+    return false;
 
 //    FURI_LOG_W(
 //        TAG, "func: %s line: %d x:%d y:%d", __FUNCTION__, __LINE__, person->p.x, person->p.y);
 }
+
 
 static inline bool on_ground(Person* person, Field field){
     return person->p.y == Y_LAST || field[person->p.y + 1][person->p.x].state != 0;
 }
 
 static void jump_move(Person* person, Field field) {
-   if(!on_ground(person, field))
+   if(!on_ground(person, field)) {
+       person->j_tick = 0;
        return;
+   }
    person->p.y--;
 }
 
 static void person_move(Person* person, Field field) {
 
     /// Left-right logic
-    if(person->x_direction) {
-//        FURI_LOG_W(TAG, "[MOVE]func:[%s] line: %d", __FUNCTION__, __LINE__);
-        horizontal_move(person, field);
-        person->x_direction = 0;
-
+    if(person->h_tick) {
+        FURI_LOG_W(TAG, "[JUMP]func:[%s] line: %d", __FUNCTION__, __LINE__);
+        if(person->h_tick == 1) {
+            person->h_tick++;
+            FURI_LOG_W(TAG, "[JUMP]func:[%s] line: %d", __FUNCTION__, __LINE__);
+            bool moved = horizontal_move(person, field);
+            if(!moved) {
+                person->h_tick = 0;
+                person->x_direction = 0;
+            }
+        } else if(person->h_tick == 4) {
+            FURI_LOG_W(TAG, "[JUMP]func:[%s] line: %d", __FUNCTION__, __LINE__);
+            person->h_tick = 0;
+            person->x_direction = 0;
+        } else {
+            FURI_LOG_W(TAG, "[JUMP]func:[%s] line: %d", __FUNCTION__, __LINE__);
+            person->h_tick++;
+        }
     }
 
 
     ///Jump logic
-    if(person->do_jump) {
+    if(person->j_tick) {
         FURI_LOG_W(TAG, "[JUMP]func:[%s] line: %d", __FUNCTION__, __LINE__);
-        jump_move(person, field);
-        person->do_jump = 0;
+        if(person->j_tick == 1)
+            jump_move(person, field);
+        person->j_tick++;
+        if(person->j_tick == 5)
+            person->j_tick = 0;
     }
 
 }
@@ -323,7 +335,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 ///Draw GameOver
     if(game_state->game_status == StatusGameOver) {
          FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
-        /* Screen is 128x64 px
+        // Screen is 128x64 px
         canvas_set_color(canvas, ColorWhite);
         canvas_draw_box(canvas, 34, 20, 62, 24);
 
@@ -333,11 +345,29 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 37, 31, "Game Over");
 
-        canvas_set_font(canvas, FontSecondary); */
-        canvas_draw_icon(canvas, 0, 0, &I_Game_over_128x64);
-
+        canvas_set_font(canvas, FontSecondary);
         char buffer[12];
 //        snprintf(buffer, sizeof(buffer), "Score: %u", snake_state->len - 7);
+        canvas_draw_str_aligned(canvas, 64, 41, AlignCenter, AlignBottom, buffer);
+        release_mutex((ValueMutex*)mutex, game_state);
+        return;
+    }
+    ///Pause
+    if(game_state->game_status == StatusPauseGame) {
+        FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
+        // Screen is 128x64 px
+        canvas_set_color(canvas, ColorWhite);
+        canvas_draw_box(canvas, 34, 20, 62, 24);
+
+        canvas_set_color(canvas, ColorBlack);
+        canvas_draw_frame(canvas, 34, 20, 62, 24);
+
+        canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, 37, 31, "Pause Game");
+
+        canvas_set_font(canvas, FontSecondary);
+        char buffer[12];
+        //        snprintf(buffer, sizeof(buffer), "Score: %u", snake_state->len - 7);
         canvas_draw_str_aligned(canvas, 64, 41, AlignCenter, AlignBottom, buffer);
         release_mutex((ValueMutex*)mutex, game_state);
         return;
@@ -352,11 +382,12 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
         }
     }
 ///Draw Person
-    canvas_draw_icon(
+    canvas_draw_frame(
         canvas,
         game_state->person->p.x * BOX_WIDTH,
         (game_state->person->p.y - 1) * BOX_HEIGHT,
-        &I_Person1_10x20);
+        PERSON_WIDTH,
+        PERSON_HEIGHT);
     release_mutex((ValueMutex*)mutex, game_state);
 }
 
@@ -400,24 +431,33 @@ int32_t heap_defence_app(void* p) {
 
     Gui* gui = furi_record_open("gui");
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
+
     GameEvent event = {.type = 0, .input = {0}};
     while(event.input.key != InputKeyBack) { /// ATTENTION
         if(osMessageQueueGet(event_queue, &event, NULL, 100) != osOK) {
             continue;
         }
         GameState* game_state = (GameState*)acquire_mutex_block(&state_mutex);
-        if(game_state->game_status == StatusGameOver){
+        if(game_state->game_status == StatusGameOver
+           || game_state->game_status == StatusPauseGame){
             FURI_LOG_W(TAG, "[STATE_CHECK]func: [%s] line: %d ", __FUNCTION__, __LINE__);
             //TODO: init_new_field
             if(event.type == EventKeyPress && event.input.key == InputKeyOk){
-                game_state->game_status = StatusWaitingForStart;
+                game_state->game_status = StatusGameInProgr;
             }
 
             release_mutex(&state_mutex, game_state);
             continue;
         }
 
+        ///Pause
         if(event.type == EventKeyPress) {
+            if(event.input.key == InputKeyOk)
+            {
+                game_state->game_status = StatusPauseGame;
+                release_mutex(&state_mutex, game_state);
+                continue;
+            }
             person_set_events(game_state->person, &(event.input));
         } else if(event.type == EventGameTick) {
             drop_box(game_state);
@@ -430,22 +470,17 @@ int32_t heap_defence_app(void* p) {
                 continue;
                 //TODO::blah-blah-blah
             }
-
             //TODO:заглушка, нужно сделать синхронизацию
             ///Person_drop
-            if(!(tick_count % 15)) {
-               if(!on_ground(game_state->person, game_state->field)) {
-                   game_state->person->p.y++;
-               }
-            }
-
             generate_box(game_state);
             clear_rows(game_state->field);
-            tick_count++;
 
-            if(!(tick_count % 3)) { //TODO: передвижение должно занимать Н тиков пока не реализовано(
-                person_move(game_state->person, game_state->field);
+            person_move(game_state->person, game_state->field);
+            if(!game_state->person->j_tick && !on_ground(game_state->person, game_state->field)) {
+                game_state->person->p.y++;
             }
+
+            tick_count++;
         }
         release_mutex(&state_mutex, game_state);
         view_port_update(view_port);
