@@ -336,6 +336,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     if(game_state->game_status == StatusGameOver) {
          FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
         // Screen is 128x64 px
+        /*
         canvas_set_color(canvas, ColorWhite);
         canvas_draw_box(canvas, 34, 20, 62, 24);
 
@@ -345,7 +346,8 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 37, 31, "Game Over");
 
-        canvas_set_font(canvas, FontSecondary);
+        canvas_set_font(canvas, FontSecondary); */
+        canvas_draw_icon(canvas, 0, 0, &I_Game_over_128x64);
         char buffer[12];
 //        snprintf(buffer, sizeof(buffer), "Score: %u", snake_state->len - 7);
         canvas_draw_str_aligned(canvas, 64, 41, AlignCenter, AlignBottom, buffer);
@@ -356,7 +358,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     if(game_state->game_status == StatusPauseGame) {
         FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
         // Screen is 128x64 px
-        canvas_set_color(canvas, ColorWhite);
+        /* canvas_set_color(canvas, ColorWhite);
         canvas_draw_box(canvas, 34, 20, 62, 24);
 
         canvas_set_color(canvas, ColorBlack);
@@ -365,7 +367,8 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 37, 31, "Pause Game");
 
-        canvas_set_font(canvas, FontSecondary);
+        canvas_set_font(canvas, FontSecondary);*/
+        canvas_draw_icon(canvas, 0, 0, &I_Start_128x64);
         char buffer[12];
         //        snprintf(buffer, sizeof(buffer), "Score: %u", snake_state->len - 7);
         canvas_draw_str_aligned(canvas, 64, 41, AlignCenter, AlignBottom, buffer);
@@ -382,12 +385,11 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
         }
     }
 ///Draw Person
-    canvas_draw_frame(
+    canvas_draw_icon(
         canvas,
         game_state->person->p.x * BOX_WIDTH,
         (game_state->person->p.y - 1) * BOX_HEIGHT,
-        PERSON_WIDTH,
-        PERSON_HEIGHT);
+        &I_Person1_10x20);
     release_mutex((ValueMutex*)mutex, game_state);
 }
 
