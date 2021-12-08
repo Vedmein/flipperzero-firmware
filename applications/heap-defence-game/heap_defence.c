@@ -287,7 +287,7 @@ static inline bool ground_box_check(Field field, Position new_position) {
 
 static bool is_movable(Field field, Position box_pos, int x_direction) {
     //TODO::Moжет и не двух, предположение
-    bool box_on_top = box_pos.y < 2 || get_upper_box(field, box_pos)->exists;
+    bool box_on_top = box_pos.y < 1 || get_upper_box(field, box_pos)->exists;
     bool has_next_box = get_next_box(field, box_pos, x_direction)->exists;
 
     return (!box_on_top && !has_next_box);
@@ -351,22 +351,26 @@ static void person_move(Person* person, Field field) {
     }
 
     switch(person->j_tick) {
-        case 0:
-			if (!on_ground(person, field)) {
-                person->p.y++;
-			}
-            break;
-        case 1:
-            if (on_ground(person, field)) {
-                person->p.y--;
-				person->j_tick++;
-            }
-			break;
-        case 5:
-            person->j_tick = 0;
-            break;
-        default:
+    case 0:
+        if (!on_ground(person, field)) {
+            person->p.y++;
+            person->j_tick--;
+        }
+        break;
+    case 1:
+        if (on_ground(person, field)) {
+            person->p.y--;
             person->j_tick++;
+        }
+        break;
+    case 6:
+        person->j_tick = 0;
+        break;
+    case -6:
+        person->j_tick = 0;
+        break;
+    default:
+        person->j_tick+= person->j_tick > 0 ? 1 : -1;
     }
 }
 
@@ -412,14 +416,28 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     }
 
     ///Draw Person
-    IconAnimation *player_animation = game->person->right_frame ?
+    const Person* person = game->person;
+    IconAnimation *player_animation = person->right_frame ?
                                animations[AnimationRight] :
                                animations[AnimationLeft];
 
-    canvas_draw_icon_animation(canvas,
-                               game->person->p.x * BOX_WIDTH + 4,
-                               (game->person->p.y - 1) * BOX_HEIGHT,
-                               player_animation);
+
+    uint8_t x_screan =  person->p.x * BOX_WIDTH + DRAW_X_OFFSET;
+    if(person->h_tick && person->h_tick != 1) {
+        if(person->right_frame)
+            x_screan += (person->h_tick)*2 - BOX_WIDTH;
+        else
+            x_screan -= (person->h_tick)*2 - BOX_WIDTH;
+    }
+
+    uint8_t y_screan = (person->p.y - 1) * BOX_HEIGHT;
+    if(person->j_tick) {
+        if(person->j_tick > 1)
+            y_screan += BOX_HEIGHT - (person->j_tick) * 2;
+        else if(person->j_tick < 0)
+            y_screan -= BOX_HEIGHT + (person->j_tick) * 2;
+    }
+    canvas_draw_icon_animation(canvas,x_screan, y_screan, player_animation);
 
     release_mutex((ValueMutex*)mutex, game);
 }
