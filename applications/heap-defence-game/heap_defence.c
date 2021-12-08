@@ -22,7 +22,7 @@
 #define TIMER_UPDATE_FREQ 8
 #define BOX_GENERATION_RATE 15
 
-static const Icon *boxes[] = {
+static const Icon *boxes[5] = {
 			&I_Box1_10x10,
             &I_Box2_10x10,
             &I_Box3_10x10,
@@ -63,10 +63,10 @@ typedef struct {
 } Person;
 
 typedef struct {
-    byte state: 1;
-    byte box_id: 2;
-    byte offset: 5;
-} Box;
+    uint16_t exists: 1;
+    uint16_t offset: 7;
+    uint16_t box_id: 4;
+} Box; // 12 out of 16
 
 typedef struct {
     Box**        field;
@@ -109,8 +109,9 @@ static GameState* allocGameState() {
     game->person = furi_alloc(sizeof(Person));
 
     game->field = furi_alloc(Y_FIELD_SIZE * sizeof(Box*));
-    for(int y = 0; y < Y_FIELD_SIZE; ++y) {
-        game->field[y] = furi_alloc(X_FIELD_SIZE * sizeof(Box));
+    game->field[0] = furi_alloc(X_FIELD_SIZE * Y_FIELD_SIZE * sizeof(Box));
+    for(int y = 1; y < Y_FIELD_SIZE; ++y) {
+        game->field[y] = game->field[0] + (y * X_FIELD_SIZE);
     }
     game_reset_field_and_player(game);
 
@@ -120,9 +121,10 @@ static GameState* allocGameState() {
 
 static void game_destroy(GameState* game) {
     furi_assert(game);
-    for(int y = 0; y < Y_FIELD_SIZE; ++y) {
-        free(game->field[y]);
-    }
+//    for(int y = 0; y < Y_FIELD_SIZE; ++y) {
+//        free(game->field[y]);
+//    }
+    free(game->field[0]);
     free(game->field);
     free(game);
 }
@@ -151,7 +153,7 @@ static void animations_stop_and_destroy() {
  */
 
 static inline bool is_empty(Box *box) {
-    return box->state == 0;
+    return !box->exists;
 }
 
 static inline bool has_dropped(Box *box) {
@@ -187,6 +189,7 @@ static inline void heap_swap(Box* first, Box* second) {
 
 static void generate_box(GameState const* game) {
     furi_assert(game);
+
     static byte tick_count = 0;
     if (tick_count++ != BOX_GENERATION_RATE) {
         return;
@@ -195,9 +198,13 @@ static void generate_box(GameState const* game) {
     }
 
     int x_offset = rand() % X_FIELD_SIZE;
-    game->field[0][x_offset].state = 1;
+    while (game->field[0][x_offset].exists) {
+        x_offset = rand() % X_FIELD_SIZE;
+    }
+
+    game->field[0][x_offset].exists = true;
     game->field[0][x_offset].offset = BOX_HEIGHT;
-    game->field[0][x_offset].box_id = rand() % 4;
+    game->field[0][x_offset].box_id = rand() % 5;
 }
 
 static void drop_box(GameState* game) {
@@ -207,7 +214,6 @@ static void drop_box(GameState* game) {
         for (int x = 0; x < X_FIELD_SIZE; x++) {
             Box* current_box = game->field[y] + x;
             Box* upper_box = game->field[y - 1] + x;
-				
 
             if (y == Y_LAST) {
 				decrement_y_offset_to_zero(current_box);
@@ -281,8 +287,8 @@ static inline bool ground_box_check(Field field, Position new_position) {
 
 static bool is_movable(Field field, Position box_pos, int x_direction) {
     //TODO::Moжет и не двух, предположение
-    bool box_on_top = box_pos.y < 2 || get_upper_box(field, box_pos)->state != 0;
-    bool has_next_box = get_next_box(field, box_pos, x_direction)->state != 0;
+    bool box_on_top = box_pos.y < 2 || get_upper_box(field, box_pos)->exists;
+    bool has_next_box = get_next_box(field, box_pos, x_direction)->exists;
 
     return (!box_on_top && !has_next_box);
 }
@@ -307,7 +313,7 @@ static bool horizontal_move(Person* person, Field field) {
         *get_next_box(field, new_position, person->x_direction) =
             field[new_position.y][new_position.x];
 
-        field[new_position.y][new_position.x].state = 0;
+        field[new_position.y][new_position.x].exists = false;
         person->p = new_position;
         return true;
     }
@@ -316,7 +322,7 @@ static bool horizontal_move(Person* person, Field field) {
 
 
 static inline bool on_ground(Person* person, Field field){
-    return person->p.y == Y_LAST || field[person->p.y + 1][person->p.x].state != 0;
+    return person->p.y == Y_LAST || field[person->p.y + 1][person->p.x].exists;
 }
 
 static void person_move(Person* person, Field field) {
@@ -365,7 +371,7 @@ static void person_move(Person* person, Field field) {
 }
 
 static inline bool is_person_dead(Person* person, Box** field) {
-    return field[person->p.y - 1][person->p.x].state != 0;
+    return field[person->p.y - 1][person->p.x].exists;
 }
 
 /**
@@ -376,8 +382,8 @@ static void draw_box(Canvas* canvas, Box* box, int x, int y) {
     if (is_empty(box)) {
         return;
     }
-    byte y_screen = y * BOX_WIDTH - box->offset;
-    byte x_screen = x * BOX_HEIGHT + 4;
+    byte y_screen = y * BOX_HEIGHT - box->offset;
+    byte x_screen = x * BOX_WIDTH + 4;
 
     canvas_draw_icon(canvas, x_screen, y_screen, boxes[box->box_id]);
 }
@@ -411,7 +417,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
                                animations[AnimationLeft];
 
     canvas_draw_icon_animation(canvas,
-                               game->person->p.x * BOX_WIDTH,
+                               game->person->p.x * BOX_WIDTH + 4,
                                (game->person->p.y - 1) * BOX_HEIGHT,
                                player_animation);
 
