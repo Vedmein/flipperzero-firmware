@@ -367,7 +367,10 @@ static void person_move(Person* person, Field field) {
         default:
             person->j_tick += person->j_tick > 0 ? 1 : -1;
     }
-
+    if (person->j_tick > 0) {
+        field[person->p.y][person->p.x] = (Box){0};
+        *get_upper_box(field, person->p) = (Box){0};
+    }
 }
 
 static inline bool is_person_dead(Person* person, Box** field) {
