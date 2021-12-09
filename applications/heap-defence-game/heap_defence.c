@@ -56,19 +56,18 @@ typedef struct {
 } Position;
 
 typedef struct {
-    int8_t  x_direction;
-    uint8_t is_walking;
-    int8_t  j_tick;
-    int8_t  h_tick;
-    Position p;
-    bool    right_frame;
+    Position    p;
+    int8_t      x_direction;
+    int8_t      j_tick;
+    int8_t      h_tick;
+    bool        right_frame;
 } Person;
 
 typedef struct {
-    uint16_t exists: 1;
-    uint16_t offset: 7;
-    uint16_t box_id: 4;
-} Box; // 12 out of 16
+    uint8_t offset: 4;
+    uint8_t box_id: 3;
+    uint8_t exists: 1;
+} Box;
 
 typedef struct {
     Box**        field;
@@ -95,9 +94,7 @@ typedef struct {
 
 static void game_reset_field_and_player(GameState* game) {
     ///Reset field
-    for(int y = 0; y < Y_FIELD_SIZE; ++y) {
-        bzero(game->field[y], sizeof(Box) * X_FIELD_SIZE);
-    }
+    bzero(game->field[0], X_FIELD_SIZE * Y_FIELD_SIZE * sizeof(Box));
 
     ///Reset person
     bzero(game->person, sizeof(Person));
@@ -123,9 +120,6 @@ static GameState* allocGameState() {
 
 static void game_destroy(GameState* game) {
     furi_assert(game);
-//    for(int y = 0; y < Y_FIELD_SIZE; ++y) {
-//        free(game->field[y]);
-//    }
     free(game->field[0]);
     free(game->field);
     free(game);
@@ -195,9 +189,8 @@ static void generate_box(GameState const* game) {
     static byte tick_count = 0;
     if (tick_count++ != BOX_GENERATION_RATE) {
         return;
-    } else {
-        tick_count = 0;
     }
+    tick_count = 0;
 
     int x_offset = rand() % X_FIELD_SIZE;
     while (game->field[0][x_offset].exists) {
@@ -289,7 +282,7 @@ static inline bool ground_box_check(Field field, Position new_position) {
 
 static bool is_movable(Field field, Position box_pos, int x_direction) {
     //TODO::Moжет и не двух, предположение
-    bool box_on_top = box_pos.y < 1 || get_upper_box(field, box_pos)->exists;
+    bool box_on_top = box_pos.y < 2 || get_upper_box(field, box_pos)->exists;
     bool has_next_box = get_next_box(field, box_pos, x_direction)->exists;
 
     return (!box_on_top && !has_next_box);
@@ -353,31 +346,32 @@ static void person_move(Person* person, Field field) {
     }
 
     switch(person->j_tick) {
-    case 0:
-        if (!on_ground(person, field)) {
-            person->p.y++;
-            person->j_tick--;
-        }
-        break;
-    case 1:
-        if (on_ground(person, field)) {
-            person->p.y--;
-            person->j_tick++;
-        }
-        break;
-    case 6:
-        person->j_tick = 0;
-        break;
-    case -6:
-        person->j_tick = 0;
-        break;
-    default:
-        person->j_tick+= person->j_tick > 0 ? 1 : -1;
+        case 0:
+            if (!on_ground(person, field)) {
+                person->p.y++;
+                person->j_tick--;
+            }
+            break;
+        case 1:
+            if (on_ground(person, field)) {
+                person->p.y--;
+                person->j_tick++;
+            }
+            break;
+        case 6:
+            person->j_tick = 0;
+            break;
+        case -6:
+            person->j_tick = 0;
+            break;
+        default:
+            person->j_tick += person->j_tick > 0 ? 1 : -1;
     }
+
 }
 
 static inline bool is_person_dead(Person* person, Box** field) {
-    return field[person->p.y - 1][person->p.x].exists;
+    return get_upper_box(field, person->p)->exists;
 }
 
 /**
@@ -410,36 +404,48 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 
     ///Draw field
     canvas_draw_icon(canvas, 0,0, &I_Background_128x64);
+
+    ///Draw Person
+    const Person* person = game->person;
+    IconAnimation* player_animation = NULL;
+
+    uint8_t x_screen = person->p.x * BOX_WIDTH + DRAW_X_OFFSET;
+    if (person->h_tick && person->h_tick != 1) {
+
+        if (person->right_frame) {
+            x_screen += (person->h_tick) * 2 - BOX_WIDTH;
+            player_animation = animations[AnimationRight];
+        } else {
+            x_screen -= (person->h_tick) * 2 - BOX_WIDTH;
+            player_animation = animations[AnimationLeft];
+        }
+
+    }
+
+    uint8_t y_screen = (person->p.y - 1) * BOX_HEIGHT;
+    if (person->j_tick) {
+
+        if (person->j_tick > 1) {
+            y_screen += BOX_HEIGHT - (person->j_tick) * 2;
+        } else {
+            y_screen -= BOX_HEIGHT + (person->j_tick) * 2;
+        }
+
+    }
+
+    if (player_animation) {
+        canvas_draw_icon_animation(canvas, x_screen, y_screen, player_animation);
+    } else {
+        canvas_draw_icon(canvas, x_screen, y_screen, &I_PersonStand_20x10);
+    }
+
+    ///Draw Boxes
     canvas_set_color(canvas, ColorBlack);
     for (int y = 0; y < Y_FIELD_SIZE; ++y) {
         for (int x = 0; x < X_FIELD_SIZE; ++x) {
             draw_box(canvas, &(game->field[y][x]), x, y);
         }
     }
-
-    ///Draw Person
-    const Person* person = game->person;
-    IconAnimation *player_animation = person->right_frame ?
-                               animations[AnimationRight] :
-                               animations[AnimationLeft];
-
-
-    uint8_t x_screan =  person->p.x * BOX_WIDTH + DRAW_X_OFFSET;
-    if(person->h_tick && person->h_tick != 1) {
-        if(person->right_frame)
-            x_screan += (person->h_tick)*2 - BOX_WIDTH;
-        else
-            x_screan -= (person->h_tick)*2 - BOX_WIDTH;
-    }
-
-    uint8_t y_screan = (person->p.y - 1) * BOX_HEIGHT;
-    if(person->j_tick) {
-        if(person->j_tick > 1)
-            y_screan += BOX_HEIGHT - (person->j_tick) * 2;
-        else if(person->j_tick < 0)
-            y_screan -= BOX_HEIGHT + (person->j_tick) * 2;
-    }
-    canvas_draw_icon_animation(canvas,x_screan, y_screan, player_animation);
 
     release_mutex((ValueMutex*)mutex, game);
 }
