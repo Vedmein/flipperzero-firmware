@@ -438,7 +438,6 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 
     canvas_draw_icon_animation(canvas, x_screen, y_screen, player_animation);
 
-
     ///Draw Boxes
     canvas_set_color(canvas, ColorBlack);
     for (int y = 0; y < Y_FIELD_SIZE; ++y) {
