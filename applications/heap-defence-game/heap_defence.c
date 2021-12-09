@@ -253,7 +253,7 @@ static void handle_key_presses(Person* person, InputEvent* input, GameState *gam
             break;
         case InputKeyRight:
             person->right_frame = true;
-            if(person->h_tick == 0) {
+            if (person->h_tick == 0) {
                 person->h_tick = 1;
                 person->x_direction = 1;
             }
@@ -264,7 +264,7 @@ static void handle_key_presses(Person* person, InputEvent* input, GameState *gam
         default:
             game->game_status = GameStatusPause;
             game->animation = AnimationPause;
-        }
+    }
 }
 
 /**
@@ -308,7 +308,7 @@ static bool horizontal_move(Person* person, Field field) {
         *get_next_box(field, new_position, person->x_direction) =
             field[new_position.y][new_position.x];
 
-        field[new_position.y][new_position.x].exists = false;
+        field[new_position.y][new_position.x] = (Box){0};
         person->p = new_position;
         return true;
     }
@@ -410,17 +410,17 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 
     ///Draw Person
     const Person* person = game->person;
-    IconAnimation* player_animation = NULL;
+    IconAnimation* player_animation = person->right_frame ?
+                                    animations[AnimationRight] :
+                                    animations[AnimationLeft];
 
     uint8_t x_screen = person->p.x * BOX_WIDTH + DRAW_X_OFFSET;
     if (person->h_tick && person->h_tick != 1) {
 
         if (person->right_frame) {
             x_screen += (person->h_tick) * 2 - BOX_WIDTH;
-            player_animation = animations[AnimationRight];
         } else {
             x_screen -= (person->h_tick) * 2 - BOX_WIDTH;
-            player_animation = animations[AnimationLeft];
         }
 
     }
@@ -428,7 +428,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     uint8_t y_screen = (person->p.y - 1) * BOX_HEIGHT;
     if (person->j_tick) {
 
-        if (person->j_tick > 1) {
+        if (person->j_tick > 0) {
             y_screen += BOX_HEIGHT - (person->j_tick) * 2;
         } else {
             y_screen -= BOX_HEIGHT + (person->j_tick) * 2;
@@ -436,11 +436,8 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 
     }
 
-    if (player_animation) {
-        canvas_draw_icon_animation(canvas, x_screen, y_screen, player_animation);
-    } else {
-        canvas_draw_icon(canvas, x_screen, y_screen, &I_PersonStand_20x10);
-    }
+    canvas_draw_icon_animation(canvas, x_screen, y_screen, player_animation);
+
 
     ///Draw Boxes
     canvas_set_color(canvas, ColorBlack);
@@ -481,6 +478,7 @@ int32_t heap_defence_app(void* p) {
         return 1;
     }
 
+	animations_alloc_and_start();
     ViewPort* view_port = view_port_alloc();
     view_port_draw_callback_set(view_port, heap_defense_render_callback, &state_mutex);
     view_port_input_callback_set(view_port, heap_defense_input_callback, event_queue);
@@ -493,7 +491,6 @@ int32_t heap_defence_app(void* p) {
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
     ///Animation init!
-	animations_alloc_and_start();
     GameEvent event = {0};
     while (event.input.key != InputKeyBack) {
 
