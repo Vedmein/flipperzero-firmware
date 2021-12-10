@@ -9,6 +9,8 @@
 #include <gui/gui.h>
 #include <input/input.h>
 #include <furi-hal-resources.h>
+#include <notification/notification.h>
+#include <notification/notification-messages.h>
 
 #define Y_FIELD_SIZE 6
 #define Y_LAST (Y_FIELD_SIZE - 1)
@@ -224,14 +226,15 @@ static void drop_box(GameState* game) {
     }
 }
 
-static void clear_rows(Box** field) {
+static bool clear_rows(Box** field) {
     for (int x = 0; x < X_FIELD_SIZE; ++x) {
         if (is_empty(field[Y_LAST] + x) || !has_dropped(field[Y_LAST] + x)) {
-            return;
+            return false;
         }
     }
     memset(field[Y_LAST], 0, sizeof(Box) * X_FIELD_SIZE);
     clear_rows(field);
+    return true;
 }
 
 /**
@@ -489,7 +492,8 @@ int32_t heap_defence_app(void* p) {
     Gui* gui = furi_record_open("gui");
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
-    ///Animation init!
+    NotificationApp* notification = furi_record_open("notification");
+
     GameEvent event = {0};
     while (event.input.key != InputKeyBack) {
 
@@ -498,6 +502,8 @@ int32_t heap_defence_app(void* p) {
         }
 
         game = (GameState*)acquire_mutex_block(&state_mutex);
+
+        notification_message(notification, &sequence_reset_vibro);
 
         if (game->game_status != GameStatusInProgress) {
 
@@ -514,7 +520,9 @@ int32_t heap_defence_app(void* p) {
             } else {
                 drop_box(game);
                 generate_box(game);
-                clear_rows(game->field);
+                if (clear_rows(game->field)) {
+                    notification_message(notification, &sequence_set_vibro_on);
+                }
                 person_move(game->person, game->field);
             }
 
