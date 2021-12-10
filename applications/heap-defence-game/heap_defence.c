@@ -539,6 +539,7 @@ int32_t heap_defence_app(void* p) {
     gui_remove_view_port(gui, view_port);
     view_port_free(view_port);
     furi_record_close("gui");
+    furi_record_close("notification");
     osMessageQueueDelete(event_queue);
     animations_stop_and_destroy();
     delete_mutex(&state_mutex);
