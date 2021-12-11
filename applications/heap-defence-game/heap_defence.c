@@ -26,13 +26,16 @@
 #define TIMER_UPDATE_FREQ 8
 #define BOX_GENERATION_RATE 15
 
-static const Icon *boxes[5] = {
+/// INDEX 0 зарезервирован!!!
+static const Icon *boxes[] = {
 			&I_Box1_10x10,
             &I_Box2_10x10,
             &I_Box3_10x10,
             &I_Box4_10x10,
             &I_Box5_10x10
 };
+
+static uint8_t BOX_TEXTURE_COUNT = sizeof(boxes) / sizeof(Icon *);
 
 typedef enum {
     AnimationGameOver = 0,
@@ -46,10 +49,8 @@ static IconAnimation *animations[4];
 typedef u_int8_t byte;
 
 typedef enum {
-    GameStatusOver,
-    GameStatusPause,
-    GameStatusInProgress,
-    GameStatusExit
+    GameStatusVibro = 1 << 0,
+    GameStatusInProgress = 1 << 1,
 } GameStatuses;
 
 typedef struct {
@@ -71,6 +72,8 @@ typedef struct {
     uint8_t exists: 1;
 } Box;
 
+static const uint8_t ROW_BYTE_SIZE = sizeof(Box) * X_FIELD_SIZE;
+
 typedef struct {
     Box**        field;
     Person*      person;
@@ -81,7 +84,7 @@ typedef struct {
 typedef Box** Field;
 
 typedef enum {
-    EventGameTick = 0,
+    EventGameTick,
     EventKeyPress
 } EventType;
 
@@ -188,20 +191,20 @@ static inline void heap_swap(Box* first, Box* second) {
 static void generate_box(GameState const* game) {
     furi_assert(game);
 
-    static byte tick_count = 0;
+    static byte tick_count = BOX_GENERATION_RATE;
     if (tick_count++ != BOX_GENERATION_RATE) {
         return;
     }
     tick_count = 0;
 
     int x_offset = rand() % X_FIELD_SIZE;
-    while (game->field[0][x_offset].exists) {
+    while (game->field[1][x_offset].exists) {
         x_offset = rand() % X_FIELD_SIZE;
     }
 
-    game->field[0][x_offset].exists = true;
-    game->field[0][x_offset].offset = BOX_HEIGHT;
-    game->field[0][x_offset].box_id = rand() % 5;
+    game->field[1][x_offset].exists = true;
+    game->field[1][x_offset].offset = BOX_HEIGHT;
+    game->field[1][x_offset].box_id = rand() % BOX_TEXTURE_COUNT;
 }
 
 static void drop_box(GameState* game) {
@@ -227,13 +230,13 @@ static void drop_box(GameState* game) {
 }
 
 static bool clear_rows(Box** field) {
-    for (int x = 0; x < X_FIELD_SIZE; ++x) {
-        if (is_empty(field[Y_LAST] + x) || !has_dropped(field[Y_LAST] + x)) {
+    for(int x = 0; x < X_FIELD_SIZE; ++x) {
+        if(is_empty(field[Y_LAST] + x) || !has_dropped(field[Y_LAST] + x)) {
             return false;
         }
     }
-    memset(field[Y_LAST], 0, sizeof(Box) * X_FIELD_SIZE);
-    clear_rows(field);
+
+    memset(field[Y_LAST], 0, ROW_BYTE_SIZE);
     return true;
 }
 
@@ -262,10 +265,9 @@ static void handle_key_presses(Person* person, InputEvent* input, GameState *gam
             }
             break;
         case InputKeyBack:
-            game->game_status = GameStatusExit;
             break;
         default:
-            game->game_status = GameStatusPause;
+            game->game_status &= ~GameStatusInProgress;
             game->animation = AnimationPause;
     }
 }
@@ -285,7 +287,7 @@ static inline bool ground_box_check(Field field, Position new_position) {
 
 static bool is_movable(Field field, Position box_pos, int x_direction) {
     //TODO::Moжет и не двух, предположение
-    bool box_on_top = box_pos.y < 2 || get_upper_box(field, box_pos)->exists;
+    bool box_on_top = box_pos.y < 1 || get_upper_box(field, box_pos)->exists;
     bool has_next_box = get_next_box(field, box_pos, x_direction)->exists;
 
     return (!box_on_top && !has_next_box);
@@ -400,7 +402,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     const GameState* game = acquire_mutex((ValueMutex*)mutex, 25);
 
     ///Draw GameOver or Pause
-    if (game->game_status != GameStatusInProgress) {
+    if (!(game->game_status & GameStatusInProgress)) {
         FURI_LOG_W(TAG, "[DAED_DRAW]func: [%s] line: %d ", __FUNCTION__, __LINE__);
 
         canvas_draw_icon_animation(canvas, 0,0, animations[game->animation]);
@@ -503,18 +505,24 @@ int32_t heap_defence_app(void* p) {
 
         game = (GameState*)acquire_mutex_block(&state_mutex);
 
-        notification_message(notification, &sequence_reset_vibro);
+        //unset vibration
+        if (game->game_status & GameStatusVibro) {
+            notification_message(notification, &sequence_reset_vibro);
+            game->game_status &= ~GameStatusVibro;
+        }
 
-        if (game->game_status != GameStatusInProgress) {
+        if (!(game->game_status & GameStatusInProgress)) {
 
             if (event.type == EventKeyPress && event.input.key == InputKeyOk) {
-                game->game_status = GameStatusInProgress;
+                game->game_status |= GameStatusInProgress;
             }
 
-        } else if (event.type == EventGameTick) {
+        } else if (event.type == EventKeyPress) {
+            handle_key_presses(game->person, &(event.input), game);
+        } else { // EventGameTick
 
             if (is_person_dead(game->person, game->field)) {
-                game->game_status = GameStatusOver;
+                game->game_status &= ~GameStatusInProgress;
                 game->animation = AnimationGameOver;
                 game_reset_field_and_player(game);
             } else {
@@ -522,12 +530,11 @@ int32_t heap_defence_app(void* p) {
                 generate_box(game);
                 if (clear_rows(game->field)) {
                     notification_message(notification, &sequence_set_vibro_on);
+                    game->game_status |= GameStatusVibro;
                 }
                 person_move(game->person, game->field);
             }
 
-        } else if (event.type == EventKeyPress) {
-            handle_key_presses(game->person, &(event.input), game);
         }
 
         release_mutex(&state_mutex, game);
