@@ -239,7 +239,6 @@ static bool clear_rows(Box** field) {
 
 static inline bool on_ground(Person* person, Field field) {
     return person->p.y == Y_LAST ||
-           //           person->j_tick == 0 ||
            field[person->p.y + 1][person->p.x].exists;
 }
 
@@ -340,31 +339,30 @@ static void person_move(Person* person, Field field) {
             hd_person_set_state(person, PlayerFalling);
         }
     } else if(person->states == PlayerRising) {
-        if(person->j_tick == 0) {
-            person->j_tick++;
+        if(person->j_tick++ == 0) {
             person->p.y--;
         } else if(person->j_tick == 6) {
             hd_person_set_state(person, PlayerNothing);
-        } else {
-            person->j_tick++;
         }
+
+        /// Destroy upper box
+        field[person->p.y][person->p.x] = (Box){0};
+        *get_upper_box(field, person->p) = (Box){0};
+
     } else if(person->states == PlayerFalling) {
-        if(person->j_tick == 0) {
-            person->j_tick--;
-            person->p.y++;
-        } else if(person->j_tick == -5) {
+        if(person->j_tick++ == 0) {
+            if(on_ground(person, field)) { // TODO: Test the bugfix
+                hd_person_set_state(person, PlayerNothing);
+            } else {
+                person->p.y++;
+            }
+        } else if(person->j_tick == 5) {
             if(on_ground(person, field)) {
                 hd_person_set_state(person, PlayerNothing);
             } else {
                 hd_person_set_state(person, PlayerFalling);
             }
-        } else {
-            person->j_tick--;
         }
-    }
-    if(person->states == PlayerRising) {
-        field[person->p.y][person->p.x] = (Box){0};
-        *get_upper_box(field, person->p) = (Box){0};
     }
 
     switch(person->h_tick) {
@@ -404,7 +402,7 @@ static void draw_box(Canvas* canvas, Box* box, int x, int y) {
         return;
     }
     byte y_screen = y * BOX_HEIGHT - box->offset;
-    byte x_screen = x * BOX_WIDTH + 4;
+    byte x_screen = x * BOX_WIDTH + DRAW_X_OFFSET;
 
     canvas_draw_icon(canvas, x_screen, y_screen, boxes[box->box_id]);
 }
@@ -442,10 +440,10 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 
     uint8_t y_screen = (person->p.y - 1) * BOX_HEIGHT;
     if(person->j_tick) {
-        if(person->j_tick > 0) {
+        if(person->states == PlayerRising) {
             y_screen += BOX_HEIGHT - (person->j_tick) * 2;
-        } else {
-            y_screen -= BOX_HEIGHT + (person->j_tick) * 2;
+        } else if (person->states == PlayerFalling) {
+            y_screen -= BOX_HEIGHT - (person->j_tick) * 2;
         }
     }
 
