@@ -126,7 +126,10 @@ const size_t FLIPPER_SERVICES_COUNT = sizeof(FLIPPER_SERVICES) / sizeof(FlipperA
 const FlipperApplication FLIPPER_APPS[] = {
 
 #ifdef APP_HEAP_DEFENCE_GAME
-    {.app = heap_defence_app, .name = "Heap Defence Game", .stack_size = 1024, .icon = &A_Plugins_14},
+    {.app = heap_defence_app,
+     .name = "Heap Defence Game",
+     .stack_size = 1024,
+     .icon = &A_Plugins_14},
 #endif
 
 #ifdef APP_SUBGHZ
@@ -217,7 +220,6 @@ const FlipperApplication FLIPPER_PLUGINS[] = {
 #ifdef APP_SNAKE_GAME
     {.app = snake_game_app, .name = "Snake Game", .stack_size = 1024, .icon = &A_Plugins_14},
 #endif
-
 
 };
 
