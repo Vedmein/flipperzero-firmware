@@ -111,7 +111,6 @@ extern const Icon I_Box6p_10x10;
 extern const Icon I_Person5_2_10x20;
 extern const Icon I_Game_over_128x64;
 extern const Icon I_Box5_10x10;
-extern const Icon I_PersonStand_20x10;
 extern const Icon I_Box2_10x10;
 extern const Icon I_Person4_1_10x20;
 extern const Icon I_Box4_10x10;
