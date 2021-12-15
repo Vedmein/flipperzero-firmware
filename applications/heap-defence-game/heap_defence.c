@@ -2,15 +2,18 @@
 // Created by moh on 30.11.2021.
 //
 
-#include <stdlib.h>
 #include <string.h>
 
+#include "hede_assets.h"
 #include <furi.h>
 #include <gui/gui.h>
 #include <input/input.h>
 #include <furi-hal-resources.h>
 #include <notification/notification.h>
 #include <notification/notification-messages.h>
+#include <gui/canvas_i.h>
+#include <u8g2.h>
+#include <furi-hal-compress.h>
 
 #define Y_FIELD_SIZE 6
 #define Y_LAST (Y_FIELD_SIZE - 1)
@@ -26,10 +29,17 @@
 #define TIMER_UPDATE_FREQ 8
 #define BOX_GENERATION_RATE 15
 
-static const Icon* boxes[] =
-    {&I_Box1_10x10, &I_Box2_10x10, &I_Box3_10x10, &I_Box4_10x10, &I_Box5_10x10};
+static IconAnimation* BOX_DESTROYED;
+static const Icon* boxes[] = {
+    (Icon*)&A_HD_BoxDestroyed_10x10,
+    &I_Box1_10x10,
+    &I_Box2_10x10,
+    &I_Box3_10x10,
+    &I_Box4_10x10,
+    &I_Box5_10x10};
 
 static uint8_t BOX_TEXTURE_COUNT = sizeof(boxes) / sizeof(Icon*);
+static uint8_t** icon_data;
 
 typedef enum {
     AnimationGameOver = 0,
@@ -124,22 +134,41 @@ static void game_destroy(GameState* game) {
     free(game);
 }
 
-static void animations_alloc_and_start() {
+static void assets_load() {
+
+    /// Init animations
     animations[AnimationPause] = icon_animation_alloc(&A_HD_start_128x64);
     animations[AnimationGameOver] = icon_animation_alloc(&A_HD_game_over_128x64);
     animations[AnimationLeft] = icon_animation_alloc(&A_HD_person_left_10x20);
     animations[AnimationRight] = icon_animation_alloc(&A_HD_person_right_10x20);
 
-    for(int i = 0; i < 4; ++i) {
-        furi_assert(animations[i]);
-        icon_animation_start(animations[i]);
+    BOX_DESTROYED = icon_animation_alloc(&A_HD_BoxDestroyed_10x10);
+
+    icon_animation_start(animations[AnimationLeft]);
+    icon_animation_start(animations[AnimationRight]);
+
+    /// Copy icons for later use
+    icon_data = furi_alloc(sizeof(uint8_t *) * BOX_TEXTURE_COUNT);
+    for (int i = 0; i < BOX_TEXTURE_COUNT; ++i) {
+        uint8_t * temp;
+        furi_hal_compress_icon_decode(icon_get_data(boxes[i]), &temp);
+        icon_data[i] = furi_alloc(BOX_HEIGHT * BOX_WIDTH);
+        memcpy(icon_data[i], temp, BOX_HEIGHT * BOX_WIDTH);
     }
 }
 
-static void animations_stop_and_destroy() {
+static void assets_clear() {
+
     for(int i = 0; i < 4; ++i) {
+        icon_animation_stop(animations[i]);
         icon_animation_free(animations[i]);
     }
+    icon_animation_free(BOX_DESTROYED);
+
+    for (int i = 0; i < BOX_TEXTURE_COUNT; ++i) {
+        free(icon_data[i]);
+    }
+    free(icon_data);
 }
 
 /**
@@ -197,7 +226,7 @@ static void generate_box(GameState const* game) {
 
     game->field[1][x_offset].exists = true;
     game->field[1][x_offset].offset = BOX_HEIGHT;
-    game->field[1][x_offset].box_id = rand() % BOX_TEXTURE_COUNT;
+    game->field[1][x_offset].box_id = (rand() % (BOX_TEXTURE_COUNT - 1)) + 1;
 }
 
 static void drop_box(GameState* game) {
@@ -229,7 +258,7 @@ static bool clear_rows(Box** field) {
         }
     }
 
-    memset(field[Y_LAST], 0, ROW_BYTE_SIZE);
+    memset(field[Y_LAST], 128, ROW_BYTE_SIZE);
     return true;
 }
 
@@ -238,8 +267,7 @@ static bool clear_rows(Box** field) {
  */
 
 static inline bool on_ground(Person* person, Field field) {
-    return person->p.y == Y_LAST ||
-           field[person->p.y + 1][person->p.x].exists;
+    return person->p.y == Y_LAST || field[person->p.y + 1][person->p.x].exists;
 }
 
 static void handle_key_presses(Person* person, InputEvent* input, GameState* game) {
@@ -267,6 +295,7 @@ static void handle_key_presses(Person* person, InputEvent* input, GameState* gam
     case InputKeyOk:
         game->game_status &= ~GameStatusInProgress;
         game->animation = AnimationPause;
+        icon_animation_start(animations[AnimationPause]);
     default:
         break;
     }
@@ -346,8 +375,8 @@ static void person_move(Person* person, Field field) {
         }
 
         /// Destroy upper box
-        field[person->p.y][person->p.x] = (Box){0};
-        *get_upper_box(field, person->p) = (Box){0};
+        get_upper_box(field, person->p)->box_id = 0;
+        field[person->p.y][person->p.x].box_id = 0;
 
     } else if(person->states == PlayerFalling) {
         if(person->j_tick++ == 0) {
@@ -386,11 +415,10 @@ static void person_move(Person* person, Field field) {
         FURI_LOG_W(TAG, "[JUMP]func:[%s] line: %d", __FUNCTION__, __LINE__);
         person->h_tick++;
     }
-
 }
 
 static inline bool is_person_dead(Person* person, Box** field) {
-    return get_upper_box(field, person->p)->exists;
+    return get_upper_box(field, person->p)->box_id != 0;
 }
 
 /**
@@ -404,7 +432,18 @@ static void draw_box(Canvas* canvas, Box* box, int x, int y) {
     byte y_screen = y * BOX_HEIGHT - box->offset;
     byte x_screen = x * BOX_WIDTH + DRAW_X_OFFSET;
 
-    canvas_draw_icon(canvas, x_screen, y_screen, boxes[box->box_id]);
+    if(box->box_id == 0) {
+        canvas_set_bitmap_mode(canvas, true);
+        icon_animation_start(BOX_DESTROYED);
+        canvas_draw_icon_animation(canvas, x_screen, y_screen, BOX_DESTROYED);
+        if(icon_animation_is_last_frame(BOX_DESTROYED)) {
+            *box = (Box){0};
+            icon_animation_stop(BOX_DESTROYED);
+        }
+        canvas_set_bitmap_mode(canvas, false);
+    } else {
+        u8g2_DrawXBM(&canvas->fb, x_screen, y_screen, 10, 10, icon_data[box->box_id]);
+    }
 }
 
 static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
@@ -427,7 +466,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     ///Draw Person
     const Person* person = game->person;
     IconAnimation* player_animation = person->right_frame ? animations[AnimationRight] :
-                                                            animations[AnimationLeft];
+                                      animations[AnimationLeft];
 
     uint8_t x_screen = person->p.x * BOX_WIDTH + DRAW_X_OFFSET;
     if(person->h_tick && person->h_tick != 1) {
@@ -442,7 +481,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
     if(person->j_tick) {
         if(person->states == PlayerRising) {
             y_screen += BOX_HEIGHT - (person->j_tick) * 2;
-        } else if (person->states == PlayerFalling) {
+        } else if(person->states == PlayerFalling) {
             y_screen -= BOX_HEIGHT - (person->j_tick) * 2;
         }
     }
@@ -451,7 +490,7 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 
     ///Draw Boxes
     canvas_set_color(canvas, ColorBlack);
-    for(int y = 0; y < Y_FIELD_SIZE; ++y) {
+    for(int y = 1; y < Y_FIELD_SIZE; ++y) {
         for(int x = 0; x < X_FIELD_SIZE; ++x) {
             draw_box(canvas, &(game->field[y][x]), x, y);
         }
@@ -461,8 +500,9 @@ static void heap_defense_render_callback(Canvas* const canvas, void* mutex) {
 }
 
 static void heap_defense_input_callback(InputEvent* input_event, osMessageQueueId_t event_queue) {
-    furi_assert(event_queue);
+    if(input_event->type != InputTypePress && input_event->type != InputTypeLong) return;
 
+    furi_assert(event_queue);
     GameEvent event = {.type = EventKeyPress, .input = *input_event};
     osMessageQueuePut(event_queue, &event, 0, osWaitForever);
 }
@@ -471,7 +511,6 @@ static void heap_defense_timer_callback(osMessageQueueId_t event_queue) {
     furi_assert(event_queue);
 
     GameEvent event = {.type = EventGameTick, .input = {0}};
-    event.type = EventGameTick;
     osMessageQueuePut(event_queue, &event, 0, 0);
 }
 
@@ -479,7 +518,7 @@ int32_t heap_defence_app(void* p) {
     srand(DWT->CYCCNT);
 
     FURI_LOG_W(TAG, "Heap defence start %d", __LINE__);
-    osMessageQueueId_t event_queue = osMessageQueueNew(8, sizeof(GameEvent), NULL);
+    osMessageQueueId_t event_queue = osMessageQueueNew(3, sizeof(GameEvent), NULL);
     GameState* game = allocGameState();
 
     ValueMutex state_mutex;
@@ -488,7 +527,7 @@ int32_t heap_defence_app(void* p) {
         return 1;
     }
 
-    animations_alloc_and_start();
+    assets_load();
     ViewPort* view_port = view_port_alloc();
     view_port_draw_callback_set(view_port, heap_defense_render_callback, &state_mutex);
     view_port_input_callback_set(view_port, heap_defense_input_callback, event_queue);
@@ -502,6 +541,11 @@ int32_t heap_defence_app(void* p) {
 
     NotificationApp* notification = furi_record_open("notification");
 
+    memset(game->field[Y_LAST], 128, ROW_BYTE_SIZE);
+    game->person->p.y -= 2;
+    game->game_status = 0;
+    game->animation = AnimationPause;
+
     GameEvent event = {0};
     while(event.input.key != InputKeyBack) {
         if(osOK != osMessageQueueGet(event_queue, &event, 0, 100)) {
@@ -514,29 +558,34 @@ int32_t heap_defence_app(void* p) {
         if(game->game_status & GameStatusVibro) {
             notification_message(notification, &sequence_reset_vibro);
             game->game_status &= ~GameStatusVibro;
+            icon_animation_stop(BOX_DESTROYED);
+            memset(game->field[Y_LAST], 0, ROW_BYTE_SIZE);
         }
 
         if(!(game->game_status & GameStatusInProgress)) {
             if(event.type == EventKeyPress && event.input.key == InputKeyOk) {
                 game->game_status |= GameStatusInProgress;
+                icon_animation_stop(animations[game->animation]);
             }
 
         } else if(event.type == EventKeyPress) {
             handle_key_presses(game->person, &(event.input), game);
         } else { // EventGameTick
 
+            drop_box(game);
+            generate_box(game);
+            if(clear_rows(game->field)) {
+                notification_message(notification, &sequence_set_vibro_on);
+                icon_animation_start(BOX_DESTROYED);
+                game->game_status |= GameStatusVibro;
+            }
+            person_move(game->person, game->field);
+
             if(is_person_dead(game->person, game->field)) {
                 game->game_status &= ~GameStatusInProgress;
                 game->animation = AnimationGameOver;
+                icon_animation_start(animations[AnimationGameOver]);
                 game_reset_field_and_player(game);
-            } else {
-                drop_box(game);
-                generate_box(game);
-                if(clear_rows(game->field)) {
-                    notification_message(notification, &sequence_set_vibro_on);
-                    game->game_status |= GameStatusVibro;
-                }
-                person_move(game->person, game->field);
             }
         }
         release_mutex(&state_mutex, game);
@@ -550,7 +599,7 @@ int32_t heap_defence_app(void* p) {
     furi_record_close("gui");
     furi_record_close("notification");
     osMessageQueueDelete(event_queue);
-    animations_stop_and_destroy();
+    assets_clear();
     delete_mutex(&state_mutex);
     game_destroy(game);
 
