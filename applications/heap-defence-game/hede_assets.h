@@ -1,0 +1,8 @@
+//
+// Created by user on 15.12.2021.
+//
+
+#ifndef REAL_DEFENCE_HEDE_ASSETS_H
+#define REAL_DEFENCE_HEDE_ASSETS_H
+
+#endif //REAL_DEFENCE_HEDE_ASSETS_H
